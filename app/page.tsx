@@ -36,7 +36,7 @@ const T = {
     footer_tagline: "Built with ❤️ for the Muslim community.",
     footer_rights: "All rights reserved.",
     current: "Current", next: "Next",
-    loading_prayers: "Detecting your location...",
+    loading_prayers: "Updating location...",
     city_form_title: "Enter your city",
     city_form_btn: "Get Prayer Times",
   },
@@ -71,7 +71,7 @@ const T = {
     footer_tagline: "Fait avec ❤️ pour la communauté musulmane.",
     footer_rights: "Tous droits réservés.",
     current: "Actuelle", next: "Prochaine",
-    loading_prayers: "Détection de votre position...",
+    loading_prayers: "Mise à jour...",
     city_form_title: "Entrez votre ville",
     city_form_btn: "Voir les Horaires",
   },
@@ -106,7 +106,7 @@ const T = {
     footer_tagline: "بُني بـ ❤️ للمجتمع المسلم.",
     footer_rights: "جميع الحقوق محفوظة.",
     current: "الحالية", next: "القادمة",
-    loading_prayers: "جارٍ تحديد موقعك...",
+    loading_prayers: "جارٍ التحديث...",
     city_form_title: "أدخل مدينتك",
     city_form_btn: "عرض المواقيت",
   },
@@ -119,6 +119,34 @@ const PRAYERS = [
   { key: "Maghrib", icon: "🌅", color: "#f97316", tKey: "maghrib"  },
   { key: "Isha",    icon: "🌌", color: "#8b5cf6", tKey: "isha"     },
 ];
+
+const CACHE_KEY = "pt_cache";
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function getCached(city: string, country: string) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw);
+    const key = `${city}__${country}`.toLowerCase();
+    const entry = cache[key];
+    if (!entry) return null;
+    if (Date.now() - entry.ts > CACHE_TTL) return null;
+    return entry.timings;
+  } catch { return null; }
+}
+
+function setCache(city: string, country: string, timings: any) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    const cache = raw ? JSON.parse(raw) : {};
+    const key = `${city}__${country}`.toLowerCase();
+    cache[key] = { timings, ts: Date.now() };
+    const keys = Object.keys(cache);
+    if (keys.length > 5) delete cache[keys[0]];
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
 
 function getTimeUntilJummah() {
   const now = new Date();
@@ -136,7 +164,7 @@ function getTimeUntilJummah() {
   };
 }
 
-function getCurrentPrayer(timings) {
+function getCurrentPrayer(timings: any) {
   const now = new Date();
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const times = PRAYERS.map((p) => {
@@ -157,13 +185,13 @@ function getCurrentPrayer(timings) {
 }
 
 export default function Home() {
-  const [lang, setLang] = useState("en");
+  const [lang, setLang] = useState("fr");
   const [jummah, setJummah] = useState(getTimeUntilJummah());
   const [city, setCity] = useState("Casablanca");
   const [country, setCountry] = useState("Morocco");
-  const [prayers, setPrayers] = useState(null);
-  const [prayerStatus, setPrayerStatus] = useState(null);
-  const [loadingPrayers, setLoadingPrayers] = useState(true);
+  const [prayers, setPrayers] = useState<any>(null);
+  const [prayerStatus, setPrayerStatus] = useState<any>(null);
+  const [loadingPrayers, setLoadingPrayers] = useState(false);
   const [cityInput, setCityInput] = useState("");
   const [showCityForm, setShowCityForm] = useState(false);
   const [subEmail, setSubEmail] = useState("");
@@ -176,58 +204,55 @@ export default function Home() {
 
   const t = T[lang];
 
-  // Jummah countdown ticker
   useEffect(() => {
     const id = setInterval(() => setJummah(getTimeUntilJummah()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Scroll detection
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Geolocation → prayer times
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      fetchPrayersByCity("Casablanca", "Morocco");
+  const fetchPrayersByCity = useCallback(async (c: string, co: string, silent = false) => {
+    const cached = getCached(c, co);
+    if (cached) {
+      setPrayers(cached);
+      setPrayerStatus(getCurrentPrayer(cached));
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const geo = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
-          ).then((r) => r.json());
-          const detectedCity = geo.address?.city || geo.address?.town || geo.address?.village || "Casablanca";
-          const detectedCountry = geo.address?.country || "Morocco";
-          setCity(detectedCity);
-          setCountry(detectedCountry);
-          fetchPrayersByCity(detectedCity, detectedCountry);
-        } catch {
-          fetchPrayersByCity("Casablanca", "Morocco");
-        }
-      },
-      () => fetchPrayersByCity("Casablanca", "Morocco")
-    );
-  }, []);
-
-  const fetchPrayersByCity = useCallback(async (c, co) => {
-    setLoadingPrayers(true);
+    if (!silent) setLoadingPrayers(true);
     try {
       const r = await fetch(`/api/prayer-times?city=${encodeURIComponent(c)}&country=${encodeURIComponent(co)}`);
       const data = await r.json();
       if (data?.data?.timings) {
         setPrayers(data.data.timings);
         setPrayerStatus(getCurrentPrayer(data.data.timings));
+        setCache(c, co, data.data.timings);
       }
     } catch {}
-    setLoadingPrayers(false);
+    if (!silent) setLoadingPrayers(false);
   }, []);
 
-  const handleCityChange = (e) => {
+  useEffect(() => {
+    fetchPrayersByCity("Casablanca", "Morocco", true).then(() => {
+      fetch("https://ip-api.com/json/?fields=city,country,countryCode")
+        .then((r) => r.json())
+        .then((geo) => {
+          const detectedCity = geo.city || "Casablanca";
+          const detectedCountry = geo.country || "Morocco";
+          if (detectedCity.toLowerCase() !== "casablanca") {
+            setCity(detectedCity);
+            setCountry(detectedCountry);
+            fetchPrayersByCity(detectedCity, detectedCountry, true);
+          }
+        })
+        .catch(() => {});
+    });
+  }, [fetchPrayersByCity]);
+
+  const handleCityChange = (e: any) => {
     e.preventDefault();
     if (!cityInput.trim()) return;
     setCity(cityInput.trim());
@@ -236,7 +261,7 @@ export default function Home() {
     fetchPrayersByCity(cityInput.trim(), "");
   };
 
-  const handleSubscribe = async (e) => {
+  const handleSubscribe = async (e: any) => {
     e.preventDefault();
     setSubError("");
     if (!subEmail || !subCity) return;
@@ -269,13 +294,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-bg-base pattern-bg" dir={t.dir}>
-      {/* Ambient glow */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-emerald-dark/5 rounded-full blur-[120px]" />
         <div className="absolute top-1/3 right-0 w-[400px] h-[400px] bg-gold/4 rounded-full blur-[100px]" />
       </div>
 
-      {/* ── Nav ── */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "glass shadow-card" : "bg-transparent"}`}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -283,24 +306,17 @@ export default function Home() {
             <span className="font-semibold text-white text-sm sm:text-base">{t.nav_title}</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Language toggle */}
             <div className="flex items-center bg-bg-card/80 rounded-full p-0.5 border border-gold/10">
               {["en", "fr", "ar"].map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLang(l)}
+                <button key={l} onClick={() => setLang(l)}
                   className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                    lang === l
-                      ? "bg-gold text-bg-base"
-                      : "text-white/50 hover:text-white/80"
-                  }`}
-                >
+                    lang === l ? "bg-gold text-bg-base" : "text-white/50 hover:text-white/80"
+                  }`}>
                   {l.toUpperCase()}
                 </button>
               ))}
             </div>
-            <a href="#subscribe"
-              className="hidden sm:block px-4 py-2 rounded-full bg-emerald text-white text-xs font-semibold hover:bg-emerald-dark transition-all">
+            <a href="#subscribe" className="hidden sm:block px-4 py-2 rounded-full bg-emerald text-white text-xs font-semibold hover:bg-emerald-dark transition-all">
               {t.nav_cta}
             </a>
           </div>
@@ -308,36 +324,25 @@ export default function Home() {
       </nav>
 
       <main className="relative z-10">
-        {/* ── Hero ── */}
         <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 pt-16">
-          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}
-            className="max-w-3xl mx-auto">
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} className="max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald/10 border border-emerald/25 text-emerald text-xs font-medium mb-6">
               {t.hero_pre}
             </div>
             <div className="mb-2">
-              <h1 className="font-arabic text-6xl sm:text-8xl font-bold gold-shimmer leading-tight">
-                {t.hero_title}
-              </h1>
+              <h1 className="font-arabic text-6xl sm:text-8xl font-bold gold-shimmer leading-tight">{t.hero_title}</h1>
             </div>
             <h2 className="text-xl sm:text-3xl font-semibold text-white/80 mb-4">{t.hero_subtitle}</h2>
             <p className="text-white/50 text-sm sm:text-base max-w-xl mx-auto mb-10 leading-relaxed">{t.hero_desc}</p>
 
-            {/* Jummah countdown */}
             <div className="glass rounded-3xl p-6 sm:p-8 mb-8 glow-gold max-w-lg mx-auto">
               <p className="text-gold/70 text-xs font-medium tracking-widest uppercase mb-5">{t.countdown_label}</p>
               <div className="grid grid-cols-4 gap-3">
                 {countdownParts.map(({ label, val }) => (
                   <div key={label} className="bg-bg-base/60 rounded-2xl p-3 sm:p-4">
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={val}
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 8 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-2xl sm:text-4xl font-bold text-white font-mono tabular-nums"
-                      >
+                      <motion.div key={val} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                        transition={{ duration: 0.2 }} className="text-2xl sm:text-4xl font-bold text-white font-mono tabular-nums">
                         {String(val).padStart(2, "0")}
                       </motion.div>
                     </AnimatePresence>
@@ -347,31 +352,21 @@ export default function Home() {
               </div>
             </div>
 
-            <a href="#subscribe"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-emerald text-white font-semibold hover:bg-emerald-dark transition-all hover:scale-105 active:scale-95 shadow-emerald glow-emerald text-sm sm:text-base">
+            <a href="#subscribe" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-emerald text-white font-semibold hover:bg-emerald-dark transition-all hover:scale-105 active:scale-95 shadow-emerald glow-emerald text-sm sm:text-base">
               {t.nav_cta} →
             </a>
           </motion.div>
 
-          {/* Decorative crescent */}
-          <div className="absolute right-8 top-24 text-6xl sm:text-8xl text-gold/8 animate-float select-none pointer-events-none">
-            ☽
-          </div>
-          <div className="absolute left-4 bottom-24 text-4xl text-emerald/8 animate-float select-none pointer-events-none" style={{ animationDelay: "2s" }}>
-            ✦
-          </div>
+          <div className="absolute right-8 top-24 text-6xl sm:text-8xl text-gold/8 animate-float select-none pointer-events-none">☽</div>
+          <div className="absolute left-4 bottom-24 text-4xl text-emerald/8 animate-float select-none pointer-events-none" style={{ animationDelay: "2s" }}>✦</div>
         </section>
 
-        {/* ── Prayer Times ── */}
         <section className="py-16 sm:py-24 px-4">
           <div className="max-w-4xl mx-auto">
-            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              className="text-center mb-10">
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-10">
               <p className="text-gold/60 text-xs tracking-widest uppercase mb-2">{t.prayer_section}</p>
               <div className="flex items-center justify-center gap-2">
-                <h2 className="text-2xl sm:text-4xl font-bold text-white">
-                  {t.prayer_city} {city}
-                </h2>
+                <h2 className="text-2xl sm:text-4xl font-bold text-white">{t.prayer_city} {city}</h2>
                 <button onClick={() => setShowCityForm(!showCityForm)}
                   className="text-emerald text-xs font-medium hover:text-emerald-dark transition-colors border border-emerald/30 rounded-full px-2.5 py-0.5">
                   {t.change_city}
@@ -379,14 +374,11 @@ export default function Home() {
               </div>
             </motion.div>
 
-            {/* City form */}
             <AnimatePresence>
               {showCityForm && (
                 <motion.form initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                  onSubmit={handleCityChange}
-                  className="flex gap-2 max-w-sm mx-auto mb-8 overflow-hidden">
-                  <input value={cityInput} onChange={(e) => setCityInput(e.target.value)}
-                    placeholder={t.city_placeholder}
+                  onSubmit={handleCityChange} className="flex gap-2 max-w-sm mx-auto mb-8 overflow-hidden">
+                  <input value={cityInput} onChange={(e) => setCityInput(e.target.value)} placeholder={t.city_placeholder}
                     className="flex-1 bg-bg-card border border-gold/20 rounded-xl px-4 py-2.5 text-white placeholder-white/25 focus:outline-none focus:border-gold/50 text-sm" />
                   <button type="submit" className="px-4 py-2.5 rounded-xl bg-emerald text-white text-sm font-medium hover:bg-emerald-dark transition-all">
                     {t.city_form_btn}
@@ -395,7 +387,6 @@ export default function Home() {
               )}
             </AnimatePresence>
 
-            {/* Prayer cards */}
             {loadingPrayers ? (
               <div className="text-center py-10">
                 <div className="inline-block text-4xl animate-spin mb-3">☽</div>
@@ -407,8 +398,7 @@ export default function Home() {
                   const isCurrent = prayerStatus?.current === p.key;
                   const isNext = prayerStatus?.next === p.key;
                   return (
-                    <motion.div key={p.key}
-                      initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
+                    <motion.div key={p.key} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }} transition={{ delay: i * 0.1 }}
                       className={`glass rounded-2xl p-4 sm:p-5 text-center transition-all ${
                         isCurrent ? "prayer-active" : isNext ? "prayer-next" : ""
@@ -419,18 +409,14 @@ export default function Home() {
                         {t[p.tKey]}
                       </p>
                       <p className="text-white/40 text-xs font-medium">{p.key}</p>
-                      <p className="text-white font-bold text-sm sm:text-lg mt-2 font-mono">
-                        {prayers[p.key]?.slice(0, 5) || "—"}
-                      </p>
+                      <p className="text-white font-bold text-sm sm:text-lg mt-2 font-mono">{prayers[p.key]?.slice(0, 5) || "—"}</p>
                       {isCurrent && (
                         <span className="mt-2 inline-block text-[10px] px-2 py-0.5 rounded-full" style={{ background: `${p.color}20`, color: p.color }}>
                           {t.current}
                         </span>
                       )}
                       {isNext && !isCurrent && (
-                        <span className="mt-2 inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald/15 text-emerald">
-                          {t.next}
-                        </span>
+                        <span className="mt-2 inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald/15 text-emerald">{t.next}</span>
                       )}
                     </motion.div>
                   );
@@ -440,11 +426,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Subscribe ── */}
         <section id="subscribe" className="py-16 sm:py-24 px-4">
           <div className="max-w-2xl mx-auto">
-            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              className="text-center mb-10">
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-10">
               <p className="text-emerald text-xs tracking-widest uppercase mb-2">{t.subscribe_pre}</p>
               <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3">{t.subscribe_title}</h2>
               <p className="text-white/50 text-sm">{t.subscribe_desc}</p>
@@ -454,8 +438,7 @@ export default function Home() {
               className="gradient-border rounded-3xl p-6 sm:p-8 glow-emerald">
               <AnimatePresence mode="wait">
                 {subSuccess ? (
-                  <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                    className="text-center py-6">
+                  <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-6">
                     <div className="text-5xl mb-4">🎉</div>
                     <h3 className="font-bold text-xl text-white mb-2">{t.success_title}</h3>
                     <p className="text-white/60 text-sm">{t.success_desc}</p>
@@ -480,11 +463,8 @@ export default function Home() {
                         {[{k:"en",l:"English"},{k:"fr",l:"Français"},{k:"ar",l:"العربية"}].map(({ k, l }) => (
                           <button key={k} type="button" onClick={() => setSubLang(k)}
                             className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                              subLang === k
-                                ? "bg-emerald text-white"
-                                : "glass text-white/50 hover:text-white/80"
-                            }`}>
-                            {l}
+                              subLang === k ? "bg-emerald text-white" : "glass text-white/50 hover:text-white/80"
+                            }`}>{l}
                           </button>
                         ))}
                       </div>
@@ -492,9 +472,7 @@ export default function Home() {
                     {subError && <p className="text-red-400 text-xs text-center">{subError}</p>}
                     <button type="submit" disabled={subLoading}
                       className={`w-full py-4 rounded-xl font-semibold text-sm transition-all ${
-                        subLoading
-                          ? "bg-emerald/30 text-white/40 cursor-not-allowed"
-                          : "bg-emerald text-white hover:bg-emerald-dark active:scale-[0.98] shadow-emerald"
+                        subLoading ? "bg-emerald/30 text-white/40 cursor-not-allowed" : "bg-emerald text-white hover:bg-emerald-dark active:scale-[0.98] shadow-emerald"
                       }`}>
                       {subLoading ? t.subscribing : t.subscribe_btn}
                     </button>
@@ -506,7 +484,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Features ── */}
         <section className="py-12 sm:py-20 px-4">
           <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
@@ -515,8 +492,7 @@ export default function Home() {
               { icon: "🌍", title: "Any City, Worldwide", desc: "Works for any city on earth. Change your city anytime with one click." },
             ].map((f, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.15 }}
-                className="glass rounded-2xl p-6 text-center">
+                viewport={{ once: true }} transition={{ delay: i * 0.15 }} className="glass rounded-2xl p-6 text-center">
                 <div className="text-3xl mb-3">{f.icon}</div>
                 <h3 className="font-semibold text-white mb-2">{f.title}</h3>
                 <p className="text-white/50 text-sm leading-relaxed">{f.desc}</p>
@@ -526,7 +502,6 @@ export default function Home() {
         </section>
       </main>
 
-      {/* ── Footer ── */}
       <footer className="border-t border-white/5 py-8 px-4 text-center">
         <div className="flex items-center justify-center gap-2 mb-2">
           <span className="text-gold text-lg">☽</span>
