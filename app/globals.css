@@ -1,0 +1,103 @@
+@import url("https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #04090e;
+  --gold: #d4af37;
+  --emerald: #10b981;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--bg-base);
+}
+
+body {
+  background-color: var(--bg-base);
+  color: #e8e0d0;
+  font-family: "Inter", sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Islamic geometric SVG background pattern */
+.pattern-bg {
+  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='rgba(212,175,55,0.055)' stroke-width='0.6'%3E%3Cpolygon points='40,5 52,18 68,15 65,31 78,40 65,49 68,65 52,62 40,75 28,62 12,65 15,49 2,40 15,31 12,15 28,18'/%3E%3Cpolygon points='40,14 49,22 62,20 60,33 70,40 60,47 62,60 49,58 40,66 31,58 18,60 20,47 10,40 20,33 18,20 31,22'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 80px 80px;
+}
+
+/* Glass morphism */
+.glass {
+  background: rgba(10, 21, 32, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.glass-emerald {
+  background: rgba(16, 185, 129, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Gold shimmer text */
+.gold-shimmer {
+  background: linear-gradient(90deg, #d4af37 0%, #f0cc55 35%, #fff8d0 50%, #f0cc55 65%, #d4af37 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Prayer card glow */
+.prayer-active {
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.5), 0 0 30px rgba(212, 175, 55, 0.15);
+}
+
+.prayer-next {
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.5), 0 0 30px rgba(16, 185, 129, 0.15);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0a1520; }
+::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.3); border-radius: 2px; }
+
+/* RTL support */
+[dir="rtl"] { font-family: "Amiri", serif; }
+
+/* Safe area */
+@supports (padding: max(0px)) {
+  .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
+
+/* Gradient borders */
+.gradient-border {
+  position: relative;
+  background: linear-gradient(#0a1520, #0a1520) padding-box,
+    linear-gradient(135deg, rgba(212,175,55,0.5), rgba(16,185,129,0.3), rgba(212,175,55,0.2)) border-box;
+  border: 1px solid transparent;
+}
+
+/* Radial glow */
+.glow-gold { box-shadow: 0 0 40px rgba(212,175,55,0.12), 0 0 80px rgba(212,175,55,0.06); }
+.glow-emerald { box-shadow: 0 0 40px rgba(16,185,129,0.15), 0 0 80px rgba(16,185,129,0.07); }
+
+/* Crescent animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(-5deg); }
+  50% { transform: translateY(-12px) rotate(5deg); }
+}
+.animate-float { animation: float 5s ease-in-out infinite; }
