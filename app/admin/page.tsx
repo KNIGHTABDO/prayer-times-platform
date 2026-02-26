@@ -127,9 +127,9 @@ export default function AdminDashboard() {
     en: subscribers.filter((s) => s.language === "en").length,
   };
 
-  const topCities = Object.entries(
-    subscribers.reduce((acc: Record<string, number>, s) => { acc[s.city] = (acc[s.city] || 0) + 1; return acc; }, {} as Record<string, number>)
-  ).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 5);
+  const cityCount: Record<string, number> = {};
+  subscribers.forEach((s) => { cityCount[s.city] = (cityCount[s.city] || 0) + 1; });
+  const topCities = Object.entries(cityCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   const getJummahDate = () => {
     const now = new Date();
