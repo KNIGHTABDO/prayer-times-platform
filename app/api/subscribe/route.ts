@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/firebase-admin";
+import { getDb } from "@/lib/firebase-admin";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +19,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid language." }, { status: 400 });
     }
 
-    // Check for existing subscriber
+    let db;
+    try {
+      db = await getDb();
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 503 });
+    }
+
     const existing = await db.collection("subscribers")
       .where("email", "==", email.toLowerCase())
       .limit(1)
@@ -29,7 +35,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Already subscribed." }, { status: 409 });
     }
 
-    // Create subscriber
     await db.collection("subscribers").add({
       email: email.toLowerCase(),
       city,

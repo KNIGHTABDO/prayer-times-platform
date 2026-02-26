@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { getPrayerTimesHtml } from "@/lib/email-templates";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function getJummahTime(city: string): Promise<string> {
   try {
@@ -24,11 +21,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
     }
 
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey || apiKey === "placeholder") {
+      return NextResponse.json({ error: "Email service not configured yet. Set RESEND_API_KEY in environment variables." }, { status: 503 });
+    }
+
+    const { Resend } = await import("resend");
+    const resend = new Resend(apiKey);
+
     const jummahTime = await getJummahTime(city);
     const { subject, html } = getPrayerTimesHtml({ city, language, jummahTime, email });
 
     const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || "Prayer Times <noreply@prayertimes.app>",
+      from: process.env.RESEND_FROM_EMAIL || "Prayer Times <onboarding@resend.dev>",
       to: email,
       subject,
       html,
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error("Resend error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: (error as any).message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, messageId: data?.id });
