@@ -1,9 +1,9 @@
 import PrayerClient from "./components/PrayerClient";
 
-async function getCasablancaPrayers() {
+async function getPrayerTimes(city: string, country: string) {
   try {
     const res = await fetch(
-      "https://api.aladhan.com/v1/timingsByCity?city=Casablanca&country=Morocco&method=3",
+      `https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=3`,
       { next: { revalidate: 3600 } }
     );
     const data = await res.json();
@@ -14,7 +14,7 @@ async function getCasablancaPrayers() {
 }
 
 export default async function Home() {
-  const initialTimings = await getCasablancaPrayers();
+  const initialTimings = await getPrayerTimes("Casablanca", "Morocco");
   return (
     <PrayerClient
       initialCity="Casablanca"
