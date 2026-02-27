@@ -1,9 +1,11 @@
 import PrayerClient from "./components/PrayerClient";
 
-async function getPrayerTimes(city: string, country: string) {
+// SSR: pre-fetch Casablanca using the accurate Morocco method
+// (Fajr 19.1°, Isha 17°, Dhuhr+5min, Maghrib+7min — Ministry of Habous parameters)
+async function getCasablancaPrayers() {
   try {
     const res = await fetch(
-      `https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=3`,
+      "https://api.aladhan.com/v1/timingsByCity?city=Casablanca&country=Morocco&method=99&methodSettings=19.1,null,17&tune=0,0,0,5,0,7,0,0,0",
       { next: { revalidate: 3600 } }
     );
     const data = await res.json();
@@ -14,7 +16,7 @@ async function getPrayerTimes(city: string, country: string) {
 }
 
 export default async function Home() {
-  const initialTimings = await getPrayerTimes("Casablanca", "Morocco");
+  const initialTimings = await getCasablancaPrayers();
   return (
     <PrayerClient
       initialCity="Casablanca"
